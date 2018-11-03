@@ -1,0 +1,2 @@
+开发环境为VS2017+OPENCV3.47
+全部代码均包含在一个文件opencvtemplate.cpp中。
