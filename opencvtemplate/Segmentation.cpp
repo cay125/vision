@@ -1,18 +1,20 @@
 #include "Segmentation.h"
 #include "stdafx.h"
 #include <iostream>  
+#include <stdio.h>
 #include <numeric>
 #include <algorithm>
 #include <opencv2/core.hpp>  
 #include <opencv2/highgui.hpp>  
 #include <opencv2/imgproc.hpp>
-#define HAND_DEBUG 0
+#define HAND_DEBUG 1
 #define LED_DEBUG 1
 #define LEDline 1
 #define LEDDivideLine 0
 #define LEDShowBinaryDivided 0
 #define LEDShowOriDivided 0
-#define ShowOutHand 0
+#define ShowOutHand 1
+#define PRINT_HSV 0
 using namespace cv;
 using namespace std;
 //计算图片投影，用于筛选轮廓
@@ -197,13 +199,18 @@ void PreLED(Mat& img, Mat& out, vector<RotatedRect>& rects, int* pos = NULL)
 	float k = rects[0].size.width > rects[0].size.height ? rects[0].size.height : rects[0].size.width;
 	int left = int(rects[0].center.x + k / 2), right = rects[8].center.x - k / 2;
 	sort(rects.begin(), rects.end(), cmp2);
+	sort(rects.begin(), rects.begin() + 3, cmp1);
+	sort(rects.begin() + 3, rects.begin() + 6, cmp1);
 	k = rects[0].size.width > rects[0].size.height ? rects[0].size.height : rects[0].size.width;
-	int top = rects[1].center.y - k / 2;
-	Mat t = img(Range::all(), Range(left, right)).clone();
+	int top = 2 * rects[1].center.y - rects[4].center.y - k*0.9;
+	Mat t = img(Range(top, img.rows), Range(left, right)).clone();
 	t.copyTo(out);
 
 	for (int i = 0; i < rects.size(); i++)
+	{
 		rects[i].center.x -= left;
+		rects[i].center.y -= top;
+	}
 }
 Mat LEDDigital(Mat& img, vector<RotatedRect>& rects, RotatedRect& LEDRect)
 {
@@ -297,7 +304,7 @@ Mat LEDDigital(Mat& img, vector<RotatedRect>& rects, RotatedRect& LEDRect)
 }
 void HandDigital(Mat& img, vector<RotatedRect>& rects, int* pos = NULL)
 {
-	Mat Gaussout, Grayout, Sobelout, Binaryout, OpenOpout, CloseOpout, Tailorout, Finalout, imgbackup(img.size(), img.type());//保存中间变量用于调试
+	Mat Gaussout, Grayout, Sobelout, Binaryout, OpenOpout, CloseOpout, Tailorout, Finalout, imgbackup(img.size(), img.type()), HSVout;//保存中间变量用于调试
 	GaussianBlur(img, Gaussout, Size(15, 15), 0, 0);
 	cvtColor(Gaussout, Grayout, CV_BGR2GRAY);
 	Mat t1, t2;
@@ -355,6 +362,50 @@ void HandDigital(Mat& img, vector<RotatedRect>& rects, int* pos = NULL)
 		}
 		itc++;
 	}
+	if (rects.size() > 9)//转换HSV判断是否白色
+	{
+		cvtColor(img, HSVout, CV_BGR2HSV);
+		for (int i = 0; i < rects.size(); i++)
+		{
+			Point2f P[4];
+			rects[i].points(P);
+			vector<Point2f> points;
+			Point2f tp1(P[0].x*0.8 + P[1].x * 0.2, P[0].y*0.8 + P[1].y*0.2);
+			Point2f tp2(P[3].x*0.8 + P[2].x * 0.2, P[3].y*0.8 + P[2].y*0.2);
+			for (int j = 0; j < 4; j++)
+				points.push_back(Point2f(tp1.x*(j*0.2 + 0.2) + tp2.x*(1 - j * 0.2 - 0.2), tp1.y*(j*0.2 + 0.2) + tp2.y*(1 - j * 0.2 - 0.2)));
+			tp1 = Point2f(P[0].x*0.2 + P[1].x * 0.8, P[0].y*0.2 + P[1].y*0.8);
+			tp2 = Point2f(P[3].x*0.2 + P[2].x * 0.8, P[3].y*0.2 + P[2].y*0.8);
+			for (int j = 0; j < 4; j++)
+				points.push_back(Point2f(tp1.x*(j*0.2 + 0.2) + tp2.x*(1 - j * 0.2 - 0.2), tp1.y*(j*0.2 + 0.2) + tp2.y*(1 - j * 0.2 - 0.2)));
+			tp1 = Point2f(P[1].x*0.2 + P[2].x * 0.8, P[1].y*0.2 + P[2].y*0.8);
+			tp2 = Point2f(P[0].x*0.2 + P[3].x * 0.8, P[0].y*0.2 + P[3].y*0.8);
+			for (int j = 0; j < 4; j++)
+				points.push_back(Point2f(tp1.x*(j*0.2 + 0.2) + tp2.x*(1 - j * 0.2 - 0.2), tp1.y*(j*0.2 + 0.2) + tp2.y*(1 - j * 0.2 - 0.2)));
+			tp1 = Point2f(P[1].x*0.8 + P[2].x * 0.2, P[1].y*0.8 + P[2].y*0.2);
+			tp2 = Point2f(P[0].x*0.8 + P[3].x * 0.2, P[0].y*0.8 + P[3].y*0.2);
+			for (int j = 0; j < 4; j++)
+				points.push_back(Point2f(tp1.x*(j*0.2 + 0.2) + tp2.x*(1 - j * 0.2 - 0.2), tp1.y*(j*0.2 + 0.2) + tp2.y*(1 - j * 0.2 - 0.2)));
+			int cnt = 0;
+			for (int j = 0; j < points.size(); j++)
+			{
+#if PRINT_HSV
+				circle(img, points[j], 1, Scalar(0, 255, 0), 1);
+				printf("hsv %d: %d %d %d\n", i, HSVout.at<Vec3b>(points[j].y, points[j].x)[0] * 2, HSVout.at<Vec3b>(points[j].y, points[j].x)[1], HSVout.at<Vec3b>(points[j].y, points[j].x)[2]);
+#endif
+				if (HSVout.at<Vec3b>(points[j].y, points[j].x)[1] < 30 && HSVout.at<Vec3b>(points[j].y, points[j].x)[2]>220)
+					cnt++;
+			}
+			if (cnt < 4)
+			{
+				rects.erase(rects.begin() + i);
+				i--;
+			}
+			if (rects.size() <= 9)
+				break;
+		}
+	}
+
 	if (rects.size() > 9)//如果最后发现矩形数量大于9个，将其按照面积大小排序，选择面积最接近的9个。
 	{
 		int startIndex = -1;
