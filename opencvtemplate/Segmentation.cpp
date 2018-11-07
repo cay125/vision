@@ -495,7 +495,7 @@ Mat LEDDivide(Mat& img, int* pos, vector<Mat>& words, const char* str = NULL)
 	addWeighted(t1, 0.8, t2, 0.8, 0, Sobelout);
 	threshold(Sobelout, Binaryout, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
 	threshold(Grayout, BinDirect, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
-
+	//threshold(Grayout, BinDirect, 90, 255, CV_THRESH_BINARY);
 	//Grayout.copyTo(BinDirect);
 
 	//imshow("binary", Binaryout);
