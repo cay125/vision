@@ -13,7 +13,8 @@ bool cmp3(const cv::RotatedRect& a, const cv::RotatedRect& b);
 void PreLED(cv::Mat& img, cv::Mat& out, std::vector<cv::RotatedRect>& rects, int* pos = NULL);
 cv::Mat LEDDigital(cv::Mat& img, std::vector<cv::RotatedRect>& rects, cv::RotatedRect& LEDRect);
 void HandDigital(cv::Mat& img, std::vector<cv::RotatedRect>& rects, int* pos = NULL);
-cv::Mat LEDDivide(cv::Mat& img, int* pos);
+cv::Mat LEDDivide(cv::Mat& img, int* pos, std::vector<cv::Mat>& words, const char* str = NULL);
+void ShowProjection(cv::Mat& img);
 
 
 #endif // !SEGMENTATION_H

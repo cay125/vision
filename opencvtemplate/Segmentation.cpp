@@ -7,16 +7,45 @@
 #include <opencv2/core.hpp>  
 #include <opencv2/highgui.hpp>  
 #include <opencv2/imgproc.hpp>
-#define HAND_DEBUG 1
-#define LED_DEBUG 1
-#define LEDline 1
+#define HAND_DEBUG 0
+#define LED_DEBUG 0
+#define LEDline 0
 #define LEDDivideLine 0
-#define LEDShowBinaryDivided 0
+#define LEDShowBinaryDivided 1
 #define LEDShowOriDivided 0
-#define ShowOutHand 1
+#define ShowOutHand 0
 #define PRINT_HSV 0
 using namespace cv;
 using namespace std;
+void ShowProjection(Mat& img)
+{
+	Mat v(img.size(), img.type(), Scalar(0, 0, 0)), h(img.size(), img.type(), Scalar(0, 0, 0));
+	int row = img.rows, col = img.cols;
+	vector<int> vector_cnth;
+	for (int i = 0; i < row; i++)
+	{
+		int cnth = 0;
+		for (int j = 0; j < col; j++)
+		{
+			if (img.at<uchar>(i, j) == 255)
+				h.at<uchar>(i, cnth++) = 255;
+		}
+		vector_cnth.push_back(cnth);
+	}
+	vector<int> vector_cntv;
+	for (int j = 0; j < col; j++)
+	{
+		int cntv = 0;
+		for (int i = 0; i < row; i++)
+		{
+			if (img.at<uchar>(i, j) == 255)
+				v.at<uchar>(cntv++, j) = 255;
+		}
+		vector_cntv.push_back(cntv);
+	}
+	imshow("v", v);
+	imshow("h", h);
+}
 //计算图片投影，用于筛选轮廓
 void Projection(Mat& img, Mat& out, int v_thresh, int h_thresh, Mat& other, int* pos = NULL)
 {
@@ -197,13 +226,16 @@ void PreLED(Mat& img, Mat& out, vector<RotatedRect>& rects, int* pos = NULL)
 	}
 	sort(rects.begin(), rects.end(), cmp1);
 	float k = rects[0].size.width > rects[0].size.height ? rects[0].size.height : rects[0].size.width;
-	int left = int(rects[0].center.x + k / 2), right = rects[8].center.x - k / 2;
+	int left = int(rects[0].center.x + k / 2), right = rects[8].center.x - k / 2 * 0.84;
 	sort(rects.begin(), rects.end(), cmp2);
 	sort(rects.begin(), rects.begin() + 3, cmp1);
 	sort(rects.begin() + 3, rects.begin() + 6, cmp1);
 	k = rects[0].size.width > rects[0].size.height ? rects[0].size.height : rects[0].size.width;
 	int top = 2 * rects[1].center.y - rects[4].center.y - k*0.9;
+	int bottom = rects[1].center.y - k / 2;
+	top = top < 0 ? 0 : top;
 	Mat t = img(Range(top, img.rows), Range(left, right)).clone();
+	//Mat t = img(Range::all(), Range(left, right)).clone();
 	t.copyTo(out);
 
 	for (int i = 0; i < rects.size(); i++)
@@ -239,17 +271,19 @@ Mat LEDDigital(Mat& img, vector<RotatedRect>& rects, RotatedRect& LEDRect)
 #if LED_DEBUG
 	cout << "img size is: " << img.rows << " " << img.cols << endl;
 	cout << "num of contour is " << contours.size() << endl;
+	drawContours(imgbackup, contours, -1, Scalar(0, 255, 0));
 #endif
 	
 	for (int i = 0; i<contours.size(); i++)
 	{//删除所有子轮廓，只保留一级轮廓
-		if (hierarchy[i][3] != -1 || contours[i].size() < 200)
+		if (hierarchy[i][3] != -1 || contours[i].size() < 120)
 		{
 			contours.erase(contours.begin() + i);
 			hierarchy.erase(hierarchy.begin() + i);
 			i--;
 		}
 	}
+	//drawContours(imgbackup, contours, -1, Scalar(0, 255, 0));
 	double AveRectSize = 0;
 	for (int i = 0; i < 9; i++)//计算矩形面积均值
 	{
@@ -448,7 +482,7 @@ void HandDigital(Mat& img, vector<RotatedRect>& rects, int* pos = NULL)
 	imshow("tailor", Tailorout);
 #endif
 }
-Mat LEDDivide(Mat& img, int* pos)
+Mat LEDDivide(Mat& img, int* pos, vector<Mat>& words, const char* str = NULL)
 {
 	Mat Gaussout, Grayout, Sobelout, Binaryout, imgbackup(img.size(), img.type()), BinDirect;
 	GaussianBlur(img, Gaussout, Size(5, 5), 0, 0);
@@ -461,6 +495,9 @@ Mat LEDDivide(Mat& img, int* pos)
 	addWeighted(t1, 0.8, t2, 0.8, 0, Sobelout);
 	threshold(Sobelout, Binaryout, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
 	threshold(Grayout, BinDirect, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+
+	//Grayout.copyTo(BinDirect);
+
 	//imshow("binary", Binaryout);
 
 	ProjectLED(Binaryout, pos);
@@ -480,20 +517,23 @@ Mat LEDDivide(Mat& img, int* pos)
 	Token[4] = img(Range::all(), Range(pos[3], img.cols));
 	imshow("第5字符", Token[4]);
 #endif
-#if LEDShowBinaryDivided
+
 	t = 0;
 	for (int i = 0; i < 4; i++)
 	{
 		Token[i] = BinDirect(Range::all(), Range(t, pos[i]));
-		Mat tmp;
-		morphologyEx(Token[i], tmp, MORPH_OPEN, getStructuringElement(MORPH_RECT, Size(2, 2)));
 		t = pos[i];
 		stringstream s;
 		s << (i + 1);
-		imshow("第" + s.str() + "字符", Token[i]);
+#if LEDShowBinaryDivided
+		imshow(string(str == NULL ? "" : str) + "第" + s.str() + "字符", Token[i]);
+#endif
+		words.push_back(Token[i]);
 	}
 	Token[4] = BinDirect(Range::all(), Range(pos[3], img.cols));
-	imshow("第5字符", Token[4]);
+#if LEDShowBinaryDivided
+	imshow(string(str == NULL ? "" : str) + "第5字符", Token[4]);
 #endif
+	words.push_back(Token[4]);
 	return BinDirect;
 }
